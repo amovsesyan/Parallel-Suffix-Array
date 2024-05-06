@@ -1,0 +1,1 @@
+/opt/homebrew/Cellar/llvm/17.0.6_1/bin/clang++  -fopenmp=libomp -g -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names -L/opt/homebrew/opt/libomp/lib CMakeFiles/sa.dir/src/main.cpp.o -o sa 

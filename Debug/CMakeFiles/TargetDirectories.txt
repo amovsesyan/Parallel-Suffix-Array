@@ -1,0 +1,3 @@
+/Users/movsesyanae/Programming/CMSC858N/Parallel-Suffix-Array/Debug/CMakeFiles/sa.dir
+/Users/movsesyanae/Programming/CMSC858N/Parallel-Suffix-Array/Debug/CMakeFiles/edit_cache.dir
+/Users/movsesyanae/Programming/CMSC858N/Parallel-Suffix-Array/Debug/CMakeFiles/rebuild_cache.dir
