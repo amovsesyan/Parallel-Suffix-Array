@@ -1,5 +1,6 @@
 // #include <cstdint>
 
+#include <atomic>
 #include <iostream>
 #include <fstream>
 #include <chrono>
@@ -9,7 +10,8 @@ typedef uint64_t index_t;
 
 class SuffixArray {
     private:
-		
+		//enum to specify merge type
+		enum MergeType {max_parallel, binary_parallel};
 		// struct to store Suffix information
 		struct Suffix{
 			hash_t hash;
@@ -20,12 +22,14 @@ class SuffixArray {
 		// length of genome string
         index_t genome_length;
 		// array to store suffix objects
-        Suffix* suffixes;
-        // Suffix** suffixes;
+        // Suffix* suffixes;
+        Suffix** suffixes;
 		// defines block size - i.e. how many characters to use as a hash for the suffix
         index_t block_size;
 		// stores actual suffix array with indices to the corresponding suffix in the genome
 		index_t* suffix_array;
+
+		MergeType merge_type;
 
 		// to keep track of the number of comparisons we do in sorting
 		std::atomic<uint64_t> num_extra_compares;
@@ -121,24 +125,24 @@ class SuffixArray {
 		// Initializes array of Suffix structs and suffix array
         void set_up_suffixes() {
            	// assumes done after reading genome
-            // this->suffixes = (Suffix**) calloc(block_size, sizeof(Suffix*));
+            this->suffixes = (Suffix**) calloc(block_size, sizeof(Suffix*));
 			
-			// for (index_t i = 0; i < block_size; i++) {
+			for (index_t i = 0; i < block_size; i++) {
 				
-			// 	hash_t block_length = genome_length / block_size;
+				hash_t block_length = genome_length / block_size;
 				
-			// 	if (i < genome_length % block_size) {
-			// 		block_length++;
-			// 	}
+				if (i < genome_length % block_size) {
+					block_length++;
+				}
 
-			// 	suffixes[i] = (Suffix*) calloc(block_length, sizeof(Suffix));
+				suffixes[i] = (Suffix*) calloc(block_length, sizeof(Suffix));
 				
-			// 	for(index_t j = 0; j < block_length; j++) {
-			// 		index_t genome_index = j * block_size + i;
-			// 		suffixes[i][j].hash = calc_suffix_hash(genome_index);
-			// 	}
-			// }
-			this->suffixes = (Suffix*) calloc(genome_length, sizeof(Suffix));
+				for(index_t j = 0; j < block_length; j++) {
+					index_t genome_index = j * block_size + i;
+					suffixes[i][j].hash = calc_suffix_hash(genome_index);
+				}
+			}
+			// this->suffixes = (Suffix*) calloc(genome_length, sizeof(Suffix));
 
 			// set up suffix_array
 			this->suffix_array = (index_t*) calloc(genome_length, sizeof(index_t));
@@ -183,7 +187,10 @@ class SuffixArray {
 				parallel_merge_sort(sub_arrs[i], sub_arr_lengths[i]);
 			}
 			parallel_merge(sub_arrs[0], sub_arr_lengths[0], sub_arrs[1], sub_arr_lengths[1], array);
-			
+
+			// delete additional arrays created
+			free(sub_arrs[0]);
+			free(sub_arrs[1]);
 
 
 			// index_t left_length, right_length;
@@ -214,8 +221,78 @@ class SuffixArray {
 
 		}
 
+		index_t binary_search(index_t* arr, index_t length, index_t key) {
+			index_t low = 0;
+			if(length < 1) {
+				return low;
+			}
+			index_t high = length;
+			index_t mid;
+			while(low < high) {
+				mid = (low + high) / 2;
+				// if(arr[mid] == key) {
+				// 	return mid;
+				// }
+				if(suffix_less_than(arr[mid], key)) {
+					low = mid + 1;
+				} else {
+					high = mid;
+				}
+			}
+			return low;
+		}
+
 		void parallel_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
-			serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
+			// serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
+
+			if (merge_type == MergeType::max_parallel) {
+				// we'll start with the left
+				#pragma omp parallel for
+				for(index_t i = 0; i < left_length; i++) {
+					index_t key = left_arr[i];
+					index_t index = binary_search(right_arr, right_length, key);
+					// insert key into result array
+					result_arr[i + index] = key;
+				}
+
+				// now we'll do the right side
+				#pragma omp parallel for
+				for(index_t i = 0; i < right_length; i++) {
+					index_t key = right_arr[i];
+					index_t index = binary_search(left_arr, left_length, key);
+					result_arr[i + index] = key;
+					// offset += index;
+				}
+			} else {
+				index_t* arrs[2];
+				arrs[0] = left_arr;
+				arrs[1] = right_arr;
+
+				index_t lengths[2];
+				lengths[0] = left_length;
+				lengths[1] = right_length;
+				for(index_t i = 0; i < 2; i++) {
+					index_t* current_arr = arrs[i];
+					index_t curr_length = lengths[i];
+
+					index_t* other_arr = arrs[(i + 1) % 2];
+					index_t other_length = lengths[(i + 1) % 2];
+
+					index_t offset = 0;
+					for(index_t j = 0; j < curr_length; j++) {
+						index_t key = current_arr[j];
+						index_t index = binary_search(other_arr + offset, other_length - offset, key);
+						// insert key into result array
+						result_arr[j + index + offset] = key;
+						offset += index;
+					}
+				}
+			}
+
+			// par do merge left and right
+
+
+
 		}
 
 		void serial_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
@@ -355,8 +432,8 @@ class SuffixArray {
 			
 			index_t j = genome_index / block_size;
 
-            // Suffix* suffix = suffixes[i] + j;
-            Suffix* suffix = suffixes + (i * block_length + num_over + j);
+            Suffix* suffix = suffixes[i] + j;
+            // Suffix* suffix = suffixes + (i * block_length + num_over + j);
 
 			// num_over * (block_length + 1) + (i - num_over) * (block_length)
 			// = num_over * block_length + num_over + i * block_length - num_over * block_length
@@ -366,6 +443,7 @@ class SuffixArray {
         }
 
         SuffixArray(char* fasta_file, uint32_t block_size){
+			merge_type = MergeType::binary_parallel;
             num_extra_compares = 0;
             num_extra_compares_over_2 = 0;
             num_extra_compares_over_4 = 0;

@@ -1,16 +1,22 @@
+cmake_minimum_required(VERSION 3.22)
 project(ParallalSuffixArray)
 
-cmake_minimum_required(VERSION 3.25)
+#set CXX standard to 17
 
 
-set(CMAKE_C_COMPILER "/opt/homebrew/Cellar/llvm/17.0.6_1/bin/clang")
-set(CMAKE_CXX_COMPILER "/opt/homebrew/Cellar/llvm/17.0.6_1/bin/clang++")
+
+set(CMAKE_C_COMPILER "clang")
+set(CMAKE_CXX_COMPILER "clang++")
+
+# add flag -std=c++17 to cxx compiler
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 message(STATUS "CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}")
 message(STATUS "CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp=libomp")
+#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp=libomp")
 find_package(OpenMP)
 if (OPENMP_FOUND)
     message(STATUS "OpenMP found")
