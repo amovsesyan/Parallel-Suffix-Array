@@ -146,6 +146,7 @@ class SuffixArray {
 
 			// set up suffix_array
 			this->suffix_array = (index_t*) calloc(genome_length, sizeof(index_t));
+			#pragma omp parallel for
 			for(index_t genome_i = 0; genome_i < genome_length; genome_i++) {
 				suffix_array[genome_i] = genome_i;
 			}
@@ -162,63 +163,80 @@ class SuffixArray {
         }
 
 		void parallel_merge_sort(index_t* array, index_t length) {
-			
-			// base case 
+			// base case
 			if(length < 2) {
 				return;
 			}
+			// if(length < 1024) {
+			// 	// use slow sort
+			// 	very_slow_sort(array, length);
+			// }
 
-			index_t* sub_arrs[2];
-			index_t sub_arr_lengths[2];
+			// index_t* sub_arrs[2];
+			// index_t sub_arr_lengths[2];
+			//
+			// sub_arr_lengths[0] = length / 2;
+			// sub_arr_lengths[1] = length - sub_arr_lengths[0];
+			//
+			// #pragma omp parallel for
+			// for(int i = 0; i < 2; i++) {
+			// 	sub_arrs[i] = (index_t*) calloc(sub_arr_lengths[i], sizeof(index_t));
+			// 	uint64_t offset = 0;
+			// 	if (i == 1) {
+			// 		offset = sub_arr_lengths[i - 1];
+			// 	}
+			// 	for (index_t j = 0; j < sub_arr_lengths[i]; j++) {
+			// 		sub_arrs[i][j] = array[j + offset];
+			// 	}
+			// 	parallel_merge_sort(sub_arrs[i], sub_arr_lengths[i]);
+			// }
+			// parallel_merge(sub_arrs[0], sub_arr_lengths[0], sub_arrs[1], sub_arr_lengths[1], array);
+			// // delete additional arrays created
+			// free(sub_arrs[0]);
+			// free(sub_arrs[1]);
 
-			sub_arr_lengths[0] = length / 2;
-			sub_arr_lengths[1] = length - sub_arr_lengths[0];
 
-			#pragma omp parallel for
-			for(int i = 0; i < 2; i++) {
-				sub_arrs[i] = (index_t*) calloc(sub_arr_lengths[i], sizeof(index_t));
-				uint64_t offset = 0;
-				if (i == 1) {
-					offset = sub_arr_lengths[i - 1];
+			index_t left_length, right_length;
+			index_t* left_arr, *right_arr;
+
+			left_length = length / 2;
+			right_length = length - left_length;
+
+			left_arr = (index_t*) calloc(left_length, sizeof(index_t));
+			right_arr = (index_t*) calloc(right_length, sizeof(index_t));
+
+			// par do
+			// #pragma omp taskgroup
+			#pragma omp parallel
+			#pragma omp single
+			{
+				#pragma omp task shared(left_arr)
+				{
+					// create sub array
+					for (index_t i = 0; i < left_length; i++) {
+						left_arr[i] = array[i];
+					}
+					// call recursive sort
+					parallel_merge_sort(left_arr, left_length);
+
 				}
-				for (index_t j = 0; j < sub_arr_lengths[i]; j++) {
-					sub_arrs[i][j] = array[j + offset];
+				#pragma omp task shared(right_arr)
+				{
+					// create sub array
+					for (index_t i = 0; i < right_length; i++) {
+						right_arr[i] = array[i + left_length];
+					}
+					// call recursive sort
+					parallel_merge_sort(right_arr, right_length);
 				}
-				parallel_merge_sort(sub_arrs[i], sub_arr_lengths[i]);
 			}
-			parallel_merge(sub_arrs[0], sub_arr_lengths[0], sub_arrs[1], sub_arr_lengths[1], array);
-
-			// delete additional arrays created
-			free(sub_arrs[0]);
-			free(sub_arrs[1]);
-
-
-			// index_t left_length, right_length;
-			// index_t* left_arr, *right_arr;
-			
-			// left_length = length / 2;
-			// right_length = length - left_length;
-			// // par do
-			// // create left and right sub arrays
-
-			// left_arr = (index_t*) calloc(left_length, sizeof(index_t));
-			// right_arr = (index_t*) calloc(right_length, sizeof(index_t));
-
-			// for (index_t i = 0; i < left_length; i++) {
-			// 	left_arr[i] = array[i];
-			// }
-			// for (index_t i = 0; i < right_length; i++) {
-			// 	right_arr[i] = array[i + left_length];
-			// }
-
-			// // call recursive sort
-			// parallel_merge_sort(left_arr, left_length);
-			// parallel_merge_sort(right_arr, right_length);
-			// // end par do
-
+			#pragma omp taskwait
 			// merge left and right halves
 			// parallel_merge(left_arr, left_length, right_arr, right_length, array);
-
+			serial_merge(left_arr, left_length, right_arr, right_length, array);
+			// free additional arrays
+			free(left_arr);
+			free(right_arr);
 		}
 
 		index_t binary_search(index_t* arr, index_t length, index_t key) {
@@ -243,51 +261,52 @@ class SuffixArray {
 		}
 
 		void parallel_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
-			// serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
+			serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
 
-			if (merge_type == MergeType::max_parallel) {
-				// we'll start with the left
-				#pragma omp parallel for
-				for(index_t i = 0; i < left_length; i++) {
-					index_t key = left_arr[i];
-					index_t index = binary_search(right_arr, right_length, key);
-					// insert key into result array
-					result_arr[i + index] = key;
-				}
-
-				// now we'll do the right side
-				#pragma omp parallel for
-				for(index_t i = 0; i < right_length; i++) {
-					index_t key = right_arr[i];
-					index_t index = binary_search(left_arr, left_length, key);
-					result_arr[i + index] = key;
-					// offset += index;
-				}
-			} else {
-				index_t* arrs[2];
-				arrs[0] = left_arr;
-				arrs[1] = right_arr;
-
-				index_t lengths[2];
-				lengths[0] = left_length;
-				lengths[1] = right_length;
-				for(index_t i = 0; i < 2; i++) {
-					index_t* current_arr = arrs[i];
-					index_t curr_length = lengths[i];
-
-					index_t* other_arr = arrs[(i + 1) % 2];
-					index_t other_length = lengths[(i + 1) % 2];
-
-					index_t offset = 0;
-					for(index_t j = 0; j < curr_length; j++) {
-						index_t key = current_arr[j];
-						index_t index = binary_search(other_arr + offset, other_length - offset, key);
-						// insert key into result array
-						result_arr[j + index + offset] = key;
-						offset += index;
-					}
-				}
-			}
+			// if (merge_type == MergeType::max_parallel) {
+			// 	// we'll start with the left
+			// 	#pragma omp parallel for
+			// 	for(index_t i = 0; i < left_length; i++) {
+			// 		index_t key = left_arr[i];
+			// 		index_t index = binary_search(right_arr, right_length, key);
+			// 		// insert key into result array
+			// 		result_arr[i + index] = key;
+			// 	}
+			//
+			// 	// now we'll do the right side
+			// 	#pragma omp parallel for
+			// 	for(index_t i = 0; i < right_length; i++) {
+			// 		index_t key = right_arr[i];
+			// 		index_t index = binary_search(left_arr, left_length, key);
+			// 		result_arr[i + index] = key;
+			// 		// offset += index;
+			// 	}
+			// }
+			// else {
+			// 	index_t* arrs[2];
+			// 	arrs[0] = left_arr;
+			// 	arrs[1] = right_arr;
+			//
+			// 	index_t lengths[2];
+			// 	lengths[0] = left_length;
+			// 	lengths[1] = right_length;
+			// 	for(index_t i = 0; i < 2; i++) {
+			// 		index_t* current_arr = arrs[i];
+			// 		index_t curr_length = lengths[i];
+			//
+			// 		index_t* other_arr = arrs[(i + 1) % 2];
+			// 		index_t other_length = lengths[(i + 1) % 2];
+			//
+			// 		index_t offset = 0;
+			// 		for(index_t j = 0; j < curr_length; j++) {
+			// 			index_t key = current_arr[j];
+			// 			index_t index = binary_search(other_arr + offset, other_length - offset, key);
+			// 			// insert key into result array
+			// 			result_arr[j + index + offset] = key;
+			// 			offset += index;
+			// 		}
+			// 	}
+			// }
 
 			// par do merge left and right
 
@@ -319,55 +338,51 @@ class SuffixArray {
 		}
 
 		// N^2 sequential sort
-		void very_slow_sort() {
+		void very_slow_sort(index_t* array, index_t length) {
 
 			// sort suffixes
-			for (index_t i = 0; i < genome_length; i++) {
+			for (index_t i = 0; i < length; i++) {
 				
 				// find index of min suffix
 				index_t min_index = i;
-				for (index_t j = i + 1; j < genome_length; j++) {
+				for (index_t j = i + 1; j < length; j++) {
 
 					index_t suffix_index, curr_min_index; 
-					suffix_index = suffix_array[j];
-					curr_min_index = suffix_array[min_index];
-					// int64_t comp = compare_suffixes(suffix_index, curr_min_index);
-					// if (comp < 0) {
-					// 	min_index = j;
-					// }
+					suffix_index = array[j];
+					curr_min_index = array[min_index];
 					if (suffix_less_than(suffix_index, curr_min_index)) {
 						min_index = j;
 					}
 				}
 
 				// swap least index into current
-				index_t temp = suffix_array[i];
-				suffix_array[i] = suffix_array[min_index];
-				suffix_array[min_index] = temp;
+				index_t temp = array[i];
+				array[i] = array[min_index];
+				array[min_index] = temp;
 			}
 		}
 
-        // int64_t compare_suffixes(uint64_t genome_index_0, uint64_t genome_index_1) {
-		// 	uint64_t s_i_0, s_i_1;
-		// 	if (genome_index_0 == genome_index_1) {
-		// 		return 0;
-		// 	}
-		// 	Suffix* s0 = get_suffix(genome_index_0); 
-		// 	Suffix* s1 = get_suffix(genome_index_1);
-		// 	int64_t difference = 0;
-		// 	uint64_t num_misses = 0;
-		// 	while(difference == 0) {
-		// 		difference = s0->hash;
-		// 		difference -= s1->hash;
-		// 		num_misses++;
+        int64_t compare_suffixes(uint64_t genome_index_0, uint64_t genome_index_1) {
+			uint64_t s_i_0, s_i_1;
+			if (genome_index_0 == genome_index_1) {
+				return 0;
+			}
+			Suffix* s0 = get_suffix(genome_index_0);
+			Suffix* s1 = get_suffix(genome_index_1);
+			int64_t difference = 0;
+			uint64_t num_misses = 0;
+			while(difference == 0) {
+				difference = s0->hash;
+				difference -= s1->hash;
+				num_misses++;
 
-		// 		s0 = s0 + 1;
-		// 		s1 = s1 + 1;
-		// 	}
-		// 	num_extra_compares += num_misses - 1;
+				s0 = s0 + 1;
+				s1 = s1 + 1;
+			}
+			num_extra_compares += num_misses - 1;
 
-		// 	return difference;
-        // }
+			return difference;
+        }
 
         bool suffix_less_than(index_t genome_index_0, index_t genome_index_1) {
 			if (genome_index_0 == genome_index_1) {
@@ -443,7 +458,7 @@ class SuffixArray {
         }
 
         SuffixArray(char* fasta_file, uint32_t block_size){
-			merge_type = MergeType::binary_parallel;
+			merge_type = MergeType::max_parallel;
             num_extra_compares = 0;
             num_extra_compares_over_2 = 0;
             num_extra_compares_over_4 = 0;
