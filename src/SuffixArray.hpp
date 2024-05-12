@@ -237,6 +237,9 @@ class SuffixArray {
 			// free additional arrays
 			free(left_arr);
 			free(right_arr);
+			if(length > 10000000) {
+				std::cout << "finished sorting " << length << " indices." << std::endl; 
+			}
 		}
 
 		index_t binary_search(index_t* arr, index_t length, index_t key) {
@@ -472,7 +475,11 @@ class SuffixArray {
 			this->genome_to_upper();
 
 			printf("Starting setup suffixes\n");
+			auto setup_start_time = std::chrono::high_resolution_clock::now();
             this->set_up_suffixes();
+			auto setup_end_time = std::chrono::high_resolution_clock::now();
+			auto set_up_time = setup_end_time - setup_start_time;
+			std::cout << "Set up took " << set_up_time.count() << " (ns)" << std::endl;
 
 			printf("Starting to sort suffixes\n");
 			auto sort_start_time = std::chrono::high_resolution_clock::now();
