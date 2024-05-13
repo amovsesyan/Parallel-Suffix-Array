@@ -24,4 +24,16 @@ if (OPENMP_FOUND)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
+
+#include(FetchContent)
+#FetchContent_Declare(
+#        parlaylib
+#        GIT_REPOSITORY https://github.com/cmuparlay/parlaylib.git
+#        GIT_TAG master
+#)
+#FetchContent_MakeAvailable(parlaylib)
 add_executable(sa src/main.cpp)
+
+set(parlaylib_SOURCE_DIR "/home/alex/Programming/Tools/parlaylib")
+target_include_directories(sa PRIVATE ${parlaylib_SOURCE_DIR} ${parlaylib_SOURCE_DIR}/include/)
+

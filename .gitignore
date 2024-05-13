@@ -2,3 +2,5 @@ build/
 cmake-build-debug/
 .idea/
 .vscode/
+build-parlay/
+human-genome/GRCh38_latest_genomic.fna
