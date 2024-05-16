@@ -4,15 +4,19 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
-#include "parlay/parallel.h"
+#include <cmath>
 
-typedef uint64_t hash_t;
+#include "parlay/parallel.h"
+// #include <divsufsort64.h>
+
+
+typedef __uint128_t hash_t;
 typedef uint64_t index_t;
 
 class SuffixArray {
     private:
 		//enum to specify merge type
-		enum MergeType {max_parallel, binary_parallel};
+		enum MergeType {max_parallel, binary_parallel, serial};
 		// struct to store Suffix information
 		struct Suffix{
 			hash_t hash;
@@ -40,6 +44,8 @@ class SuffixArray {
 		std::atomic<uint64_t> num_extra_compares_over_16;
 		std::atomic<uint64_t> num_extra_compares_over_32;
 		std::atomic<uint64_t> num_extra_compares_over_64;
+
+		bool keep_track_of_extra_comps;
 		
 
 
@@ -51,7 +57,6 @@ class SuffixArray {
 				if (genome_index + i < genome_length){
 					switch (suffix[i]){
 					case 'A':
-						// value stays the same (+= 0)
 						hash += 1;
 						break;
 					case 'C':
@@ -66,11 +71,14 @@ class SuffixArray {
 						hash += 4;
 						break; 
 
-					default:
+					case '$':
 						break;
 					}
 
-				}    
+				}
+				// else {
+				// 	hash += 1;
+				// }
 			}
 			return hash;
 		}
@@ -182,17 +190,19 @@ class SuffixArray {
 				return;
 			}
 
-			if(depth < 3) {
-				serial_merge_sort(array, length, tmp_arr, depth);
-				return;
-			}
+			// if(true) {
+			// if(depth > 0) {
+			// 	// serial_merge_sort(array, length, tmp_arr, depth);
+			// 	use_external_sort(offset, length, tmp_arr_start, depth);
+			// 	return;
+			// }
 
-			if(depth < 5) {
-				for(uint i = 0; i < depth; i++) {
-                    std::cout << "\t";
-                }
-				std::cout << "starting sorting " << length << " indices." << std::endl;
-			}
+			// if(depth < 5) {
+			// 	for(uint i = 0; i < depth; i++) {
+   //                  std::cout << "\t";
+   //              }
+			// 	std::cout << "starting sorting " << length << " indices." << std::endl;
+			// }
 
 			index_t left_length, right_length;
 			index_t* left_arr, *right_arr;
@@ -215,46 +225,27 @@ class SuffixArray {
 					parallel_merge_sort(right_arr, right_length, right_tmp_arr, depth + 1);
 				}
 			);
-			// par do
-			// #pragma omp taskgroup
-			// #pragma omp parallel
-			// #pragma omp single
-			// {
-			// 	#pragma omp task untied shared(left_arr)
-			// 	{
-			// 		// create sub array
-			// 		for (index_t i = 0; i < left_length; i++) {
-			// 			left_arr[i] = array[i];
-			// 		}
-			// 		// call recursive sort
-			// 		parallel_merge_sort(left_arr, left_length, left_tmp_arr, depth + 1);
-			//
-			// 	}
-			// 	#pragma omp task untied shared(right_arr)
-			// 	{
-			// 		// create sub array
-			// 		for (index_t i = 0; i < right_length; i++) {
-			// 			right_arr[i] = array[i + left_length];
-			// 		}
-			// 		// call recursive sort
-			// 		parallel_merge_sort(right_arr, right_length, right_tmp_arr, depth + 1);
-			// 	}
-			// }
-			// #pragma omp taskwait
+
 			// merge left and right halves
-			// parallel_merge(left_arr, left_length, right_arr, right_length, array);
-			serial_merge(left_tmp_arr, left_length, right_tmp_arr, right_length, array);
-			// free additional arrays
-			// free(left_arr);
-			// free(right_arr);
-			if(depth < 4) {
-				std::string prefix = "";
-				for(uint i = 0; i < depth; i++) {
-					prefix.append("\t");
-				}
-				std::cout << prefix << "finished sorting " << length << " indices." << std::endl;
-			}
+			merge(left_tmp_arr, left_length, right_tmp_arr, right_length, array);
+
+			// if(depth < 5) {
+			// 	std::string prefix = "";
+			// 	for(uint i = 0; i < depth; i++) {
+			// 		prefix.append("\t");
+			// 	}
+			// 	std::cout << prefix << "finished sorting " << length << " indices." << std::endl;
+			// }
 		}
+
+		// void use_external_sort(index_t offset, index_t length, index_t* tmp_arr, uint depth) {
+		// 	if(divsufsort64( (unsigned char *) genome + offset, suffix_array + offset, length) != 0) {
+		// 		throw std::invalid_argument("Couldn't build suffix array");
+		// 	}
+		// 	parlay::parallel_for(0, length, [&] (index_t i) {
+		//      tmp_arr[i + offset] = suffix_array[i + offset];
+		//  });
+		// }
 
 		void serial_merge_sort(index_t* array, index_t length, index_t* tmp_arr, uint depth) {
 			// base case
@@ -265,10 +256,10 @@ class SuffixArray {
 				return;
 			}
 
-			if(depth > 3) {
-				parallel_merge_sort(array, length, tmp_arr, depth);
-				return;
-			}
+			// if(depth > 3) {
+			// 	parallel_merge_sort(array, length, tmp_arr, depth);
+			// 	return;
+			// }
 
 			if(length > 10000000) {
 				for(uint i = 0; i < depth; i++) {
@@ -298,7 +289,6 @@ class SuffixArray {
 			serial_merge_sort(right_arr, right_length, right_tmp_arr, depth + 1);
 
 			// merge left and right halves
-			// parallel_merge(left_arr, left_length, right_arr, right_length, array);
 			serial_merge(left_tmp_arr, left_length, right_tmp_arr, right_length, array);
 
 			if(length > 10000000) {
@@ -331,58 +321,46 @@ class SuffixArray {
 			return low;
 		}
 
-		void parallel_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
-			serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
+		void max_parallel_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
+			// we'll start with the left
+			parlay::par_do([&] {
+				// find global index for suffix in left
+				parlay::parallel_for(0, left_length, [&] (index_t i) {
+					index_t key = left_arr[i];
+					index_t index = binary_search(right_arr, right_length, key);
+					// insert key into result array
+					result_arr[i + index] = key;
+                });
+			}, [&] {
+				// find global index for suffic in right
+				parlay::parallel_for(0, right_length, [&] (index_t i) {
+					index_t key = right_arr[i];
+					index_t index = binary_search(left_arr, left_length, key);
+					result_arr[i + index] = key;
+                });
+			});
+		}
 
-			// if (merge_type == MergeType::max_parallel) {
-			// 	// we'll start with the left
-			// 	#pragma omp parallel for
-			// 	for(index_t i = 0; i < left_length; i++) {
-			// 		index_t key = left_arr[i];
-			// 		index_t index = binary_search(right_arr, right_length, key);
-			// 		// insert key into result array
-			// 		result_arr[i + index] = key;
-			// 	}
-			//
-			// 	// now we'll do the right side
-			// 	#pragma omp parallel for
-			// 	for(index_t i = 0; i < right_length; i++) {
-			// 		index_t key = right_arr[i];
-			// 		index_t index = binary_search(left_arr, left_length, key);
-			// 		result_arr[i + index] = key;
-			// 		// offset += index;
-			// 	}
-			// }
-			// else {
-			// 	index_t* arrs[2];
-			// 	arrs[0] = left_arr;
-			// 	arrs[1] = right_arr;
-			//
-			// 	index_t lengths[2];
-			// 	lengths[0] = left_length;
-			// 	lengths[1] = right_length;
-			// 	for(index_t i = 0; i < 2; i++) {
-			// 		index_t* current_arr = arrs[i];
-			// 		index_t curr_length = lengths[i];
-			//
-			// 		index_t* other_arr = arrs[(i + 1) % 2];
-			// 		index_t other_length = lengths[(i + 1) % 2];
-			//
-			// 		index_t offset = 0;
-			// 		for(index_t j = 0; j < curr_length; j++) {
-			// 			index_t key = current_arr[j];
-			// 			index_t index = binary_search(other_arr + offset, other_length - offset, key);
-			// 			// insert key into result array
-			// 			result_arr[j + index + offset] = key;
-			// 			offset += index;
-			// 		}
-			// 	}
-			// }
+		void binary_parallel_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
 
-			// par do merge left and right
-
-
-
+			parlay::par_do([&] {
+				index_t offset = 0;
+				for(index_t i = 0; i < left_length; i++) {
+					index_t key = left_arr[i];
+					index_t index = binary_search(right_arr + offset, right_length - offset, key);
+					// insert key into result array
+					result_arr[i + index + offset] = key;
+					offset += index;
+				}
+			}, [&] {
+				index_t offset = 0;
+				for(index_t i = 0; i < right_length; i++) {
+					index_t key = right_arr[i];
+					index_t index = binary_search(left_arr + offset, left_length - offset, key);
+					result_arr[i + index + offset] = key;
+					offset += index;
+				}
+			});
 		}
 
 		void serial_merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
@@ -405,15 +383,26 @@ class SuffixArray {
 			while(right_i < right_length) {
 				result_arr[result_i++] = right_arr[right_i++];
 			}
-			// copy result array back into left array
-			index_t total_length = left_length + right_length;
-			// #pragma omp parallel for
-			for(index_t i = 0; i < total_length; i++) {
-                left_arr[i] = result_arr[i];
-            }
 
 		}
 
+		void merge(index_t* left_arr, index_t left_length, index_t* right_arr, index_t right_length, index_t* result_arr) {
+			if (merge_type == MergeType::max_parallel) {
+                max_parallel_merge(left_arr, left_length, right_arr, right_length, result_arr);
+            } else if (merge_type == MergeType::binary_parallel) {
+                binary_parallel_merge(left_arr, left_length, right_arr, right_length, result_arr);
+            } else {
+                serial_merge(left_arr, left_length, right_arr, right_length, result_arr);
+            }
+
+
+			// copy result array back into left array
+			index_t total_length = left_length + right_length;
+
+			parlay::parallel_for(0, total_length, [&] (index_t i) {
+				left_arr[i] = result_arr[i];
+			});
+        }
 		// N^2 sequential sort
 		void very_slow_sort(index_t* array, index_t length) {
 
@@ -471,6 +460,9 @@ class SuffixArray {
 			// bool equal;
 			uint64_t num_misses = 0;
 			do {
+				if(genome_index_0 > genome_length) {
+					return  genome_index_0 > genome_index_1;
+				}
 				s0 = get_suffix(genome_index_0); 
 				s1 = get_suffix(genome_index_1);
 				// difference = s0->hash;
@@ -536,14 +528,24 @@ class SuffixArray {
 
         SuffixArray(char* fasta_file, uint32_t block_size){
 			merge_type = MergeType::max_parallel;
+			keep_track_of_extra_comps = false;
             num_extra_compares = 0;
             num_extra_compares_over_2 = 0;
             num_extra_compares_over_4 = 0;
             num_extra_compares_over_8 = 0;
+			num_extra_compares_over_16 = 0;
+			num_extra_compares_over_32 = 0;
+			num_extra_compares_over_64 = 0;
 			this->block_size = block_size;
 			printf("Starting to read genome\n");
             this->read_fasta(fasta_file);
 			printf("Genome lengthh is: %d\n", genome_length);
+			if(parlay::num_workers() < std::log2(genome_length)) {
+			    merge_type = MergeType::serial;
+				std::cout << "Using Serial Merge" << std::endl;
+			} else {
+				std::cout << "Using Max Parallel Merge" << std::endl;
+			}
 
 			uint64_t suffix_sizes = sizeof(Suffix) * genome_length;
 			uint64_t sa_size = sizeof(index_t) * genome_length;
@@ -557,14 +559,14 @@ class SuffixArray {
 			auto setup_start_time = std::chrono::high_resolution_clock::now();
             this->set_up_suffixes();
 			auto setup_end_time = std::chrono::high_resolution_clock::now();
-			auto set_up_time = setup_end_time - setup_start_time;
-			std::cout << "Set up took " << set_up_time.count() << " (ns)" << std::endl;
+			auto set_up_time = std::chrono::duration_cast<std::chrono::milliseconds>(setup_end_time - setup_start_time);
+			std::cout << "Set up took " << set_up_time.count() << " (ms)" << std::endl;
 
 			printf("Starting to sort suffixes\n");
 			auto sort_start_time = std::chrono::high_resolution_clock::now();
 			this->sort_suffixes();
 			auto sort_end_time = std::chrono::high_resolution_clock::now();
-			auto time = sort_end_time - sort_start_time;
+			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(sort_end_time - sort_start_time);
 			printf("finished sorting\n");
 			printf("That took %llu comparisons\n", num_extra_compares.load());
 			printf("That took %llu comparisons\n", num_extra_compares_over_2.load());
@@ -574,7 +576,7 @@ class SuffixArray {
 			printf("That took %llu comparisons\n", num_extra_compares_over_32.load());
 			printf("That took %llu comparisons\n", num_extra_compares_over_64.load());
 			// printf("\t%d (ns)\n", time);
-			std::cout << time.count() << " (ns)" << std::endl;
+			std::cout << time.count() << " (ms)" << std::endl;
 
 
         }
