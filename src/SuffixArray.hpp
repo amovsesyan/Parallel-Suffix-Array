@@ -178,6 +178,7 @@ class SuffixArray {
 			index_t* tmp_arr = (index_t*) calloc(genome_length, sizeof(index_t));
 			// call sort
 			parallel_merge_sort(suffix_array, genome_length, tmp_arr, 0);
+			free(tmp_arr);
 			// very_slow_sort();
         }
 
@@ -476,28 +477,29 @@ class SuffixArray {
 				genome_index_1 += block_size;
 			} while (s0->hash == s1->hash);
 			
-			
-			// if(num_misses > 1) {
-			// 	num_extra_compares += (num_misses - 1);
-			// }
-			// if(num_misses > 2) {
-			// 	num_extra_compares_over_2 += 1;
-			// }
-			// if(num_misses > 4) {
-			// 	num_extra_compares_over_4 += 1;
-			// }
-			// if(num_misses > 8) {
-			// 	num_extra_compares_over_8 += 1;
-			// }
-			// if(num_misses > 16) {
-			// 	num_extra_compares_over_16 += 1;
-			// }
-			// if(num_misses > 32) {
-			// 	num_extra_compares_over_32 += 1;
-			// }
-			// if(num_misses > 64) {
-			// 	num_extra_compares_over_64 += 1;
-			// }
+			if(keep_track_of_extra_comps) {
+				if(num_misses > 1) {
+					num_extra_compares += (num_misses - 1);
+				}
+				if(num_misses > 2) {
+					num_extra_compares_over_2 += 1;
+				}
+				if(num_misses > 4) {
+					num_extra_compares_over_4 += 1;
+				}
+				if(num_misses > 8) {
+					num_extra_compares_over_8 += 1;
+				}
+				if(num_misses > 16) {
+					num_extra_compares_over_16 += 1;
+				}
+				if(num_misses > 32) {
+					num_extra_compares_over_32 += 1;
+				}
+				if(num_misses > 64) {
+					num_extra_compares_over_64 += 1;
+				}
+			}
 
 			return s0->hash < s1->hash;
         }
@@ -568,14 +570,16 @@ class SuffixArray {
 			auto sort_end_time = std::chrono::high_resolution_clock::now();
 			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(sort_end_time - sort_start_time);
 			printf("finished sorting\n");
-			printf("That took %llu comparisons\n", num_extra_compares.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_2.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_4.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_8.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_16.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_32.load());
-			printf("That took %llu comparisons\n", num_extra_compares_over_64.load());
-			// printf("\t%d (ns)\n", time);
+			if(keep_track_of_extra_comps) {
+				std::cout << "Number of extra comparisons: " << num_extra_compares.load() << std::endl;
+				std::cout << "Number of extra comparisons over 2: " << num_extra_compares_over_2.load() << std::endl;
+				std::cout << "Number of extra comparisons over 4: " << num_extra_compares_over_4.load() << std::endl;
+				std::cout << "Number of extra comparisons over 8: " << num_extra_compares_over_8.load() << std::endl;
+				std::cout << "Number of extra comparisons over 16: " << num_extra_compares_over_16.load() << std::endl;
+				std::cout << "Number of extra comparisons over 32: " << num_extra_compares_over_32.load() << std::endl;
+				std::cout << "Number of extra comparisons over 64: " << num_extra_compares_over_64.load() << std::endl;
+
+			}
 			std::cout << time.count() << " (ms)" << std::endl;
 
 
@@ -604,4 +608,12 @@ class SuffixArray {
 			// Close the file
 			fclose(fptr);
 		}
+	~SuffixArray() {
+        free(this->genome);
+        for (index_t i = 0; i < block_size; i++) {
+            free(suffixes[i]);
+        }
+        free(suffixes);
+        free(suffix_array);
+    }
 };
